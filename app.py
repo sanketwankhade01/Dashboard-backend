@@ -81,14 +81,14 @@ def fetch_Chatbot_Transaction(date_filter=None, product="None", company=None):
     # Add optional filters
     if date_filter:
 
-         query += " AND CAST(Ticket_Creation_Date AS DATE) = CAST(? AS DATE)"
-         params.append(date_filter)
-        # try:
-        #     startdate, enddate = date_filter.split(" AND ")
-        #     query += " AND CAST(Ticket_Creation_Date AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)"
-        #     params.extend([startdate.strip(), enddate.strip()])
-        # except ValueError:
-        #     raise ValueError("Invalid date_filter format. Expected 'startdate AND enddate'.")
+        #  query += " AND CAST(Ticket_Creation_Date AS DATE) = CAST(? AS DATE)"
+        #  params.append(date_filter)
+        try:
+            startdate, enddate = date_filter.split(" AND ")
+            query += " AND CAST(Ticket_Creation_Date AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)"
+            params.extend([startdate.strip(), enddate.strip()])
+        except ValueError:
+            raise ValueError("Invalid date_filter format. Expected 'startdate AND enddate'.")
 
     if product:
         query += " AND Product_Name LIKE ?"
