@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?><sqlb_project><db path="dashboard1.db" readonly="0" foreign_keys="1" case_sensitive_like="0" temp_store="0" wal_autocheckpoint="1000" synchronous="2"/><attached/><window><main_tabs open="structure browser pragmas query" current="3"/></window><tab_structure><column_width id="0" width="300"/><column_width id="1" width="0"/><column_width id="2" width="100"/><column_width id="3" width="676"/><column_width id="4" width="0"/><expanded_item id="0" parent="1"/><expanded_item id="1" parent="1"/><expanded_item id="2" parent="1"/><expanded_item id="3" parent="1"/></tab_structure><tab_browse><table title=".Browsables" custom_title="0" dock_id="1" table="0,10:Browsables"/><dock_state state="000000ff00000000fd00000001000000020000000000000000fc0100000001fb000000160064006f0063006b00420072006f00770073006500310100000000ffffffff0000011300ffffff000000000000000000000004000000040000000800000008fc00000000"/><default_encoding codec=""/><browse_table_settings/></tab_browse><tab_sql><sql name="SQL 1*">-- Create the table
+CREATE TABLE &quot;Ticket_table&quot; (
+    &quot;date&quot; TEXT,
+    &quot;ticket&quot; INTEGER PRIMARY KEY,
+    &quot;status&quot; TEXT,
+    &quot;customer_feedback&quot; TEXT,
+    &quot;severity&quot; TEXT,
+    &quot;category&quot; TEXT
+);
+
+-- Insert data
+INSERT INTO &quot;Ticket_table&quot; (&quot;date&quot;, &quot;ticket&quot;, &quot;status&quot;, &quot;customer_feedback&quot;, &quot;severity&quot;, &quot;category&quot;) VALUES
+('2024-07-29', 111, 'Open',      'good',            'High',       'Access/Login'),
+('2024-07-29', 119, 'Closed',    'Bad',             'Medium',     'Systems'),
+('2024-07-29', 120, 'Pending',   'neutral',         'Low',        'Hardware'),
+('2024-01-30', 121, 'Open',      'good',            'Unassigned', 'Software'),
+('2024-01-31', 122, 'Closed',    'Bad',             'High',       'Access/Login'),
+('2024-02-01', 123, 'Pending',   'neutral',         'Medium',     'Systems'),
+('2024-02-01', 124, 'Resolved',  'Satisfied',       'Low',        'Software'),
+('2024-02-01', 125, 'Resolved',  'Highly Satisfied','High',       'Hardware'),
+('2024-02-01', 126, 'Resolved',  'Unsatisfied',     'Medium',     'Systems'),
+('2024-02-01', 127, 'Pending',   'neutral',         'Medium',     'Systems'),
+('2024-02-02', 128, 'Open',      'good',            'High',       'Software'),
+('2024-02-02', 129, 'Pending',   'neutral',         'Medium',     'Systems'),
+('2024-02-03', 140, 'Pending',   'neutral',         'Medium',     'Systems');
+</sql><current_tab id="0"/></tab_sql></sqlb_project>
