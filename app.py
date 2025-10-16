@@ -5,6 +5,8 @@ import os
 import logging
 import pyodbc
 import datetime
+import jwt
+from functools import wraps
 
 # If a .env file is present, load it so environment variables work locally.
 try:
@@ -15,7 +17,9 @@ except Exception:
     pass
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*", "allow_headers": ["Authorization", "Content-Type", "x-access-token"]}})
+app.config['SECRET_KEY'] = '123sadasdasd'  # Change this to a random secret key
+
 
 # DB_PATH = 'dashboard1.db'
 
@@ -317,11 +321,11 @@ def get_monthly_trends():
     return jsonify({"labels": labels, "datasets": datasets})
 
 # CREATE - Add New Employee
-@app.route('/employees', methods=['POST'])
+@app.route('/api/employees', methods=['POST'])
 def create_employee():
     data = request.get_json()
 
-    required_fields = ['Emp_ID', 'Emp_Name', 'Email_Id', 'Company_ID', 'Department_ID', 'Role', 'Other', 'App_Role']
+    required_fields = ['Emp_ID', 'Emp_Name', 'Email_Id', 'Company_ID', 'Role']
     if not all(field in data for field in required_fields):
         return jsonify({"error": "Missing required fields"}), 400
 
@@ -332,8 +336,8 @@ def create_employee():
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO Chatbot_Emp (Emp_ID, Emp_Name, Email_Id, Company_ID, Department_ID, Role, Other, App_Role)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO Chatbot_Emp (Emp_ID, Emp_Name, Email_Id, Company_ID, Role)
+            VALUES (?, ?, ?, ?, ?)
         """, tuple(data[field] for field in required_fields))
         conn.commit()
         return jsonify({"message": "✅ Employee added successfully!"}), 201
@@ -343,8 +347,14 @@ def create_employee():
         conn.close()
 
 
+
+
+
+
+
+
 # READ - Get All Employees
-@app.route('/employees', methods=['GET'])
+@app.route('/api/getemployees', methods=['GET'])
 def get_all_employees():
     conn = get_db_connection()
     if conn is None:
@@ -416,6 +426,95 @@ def delete_employee(emp_id):
         return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
+
+
+
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        if 'x-access-token' in request.headers:
+            token = request.headers['x-access-token']
+        if not token:
+            return jsonify({'message': 'Token is missing!'}), 401
+        try:
+            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+            current_user = {'Emp_ID': data['Emp_ID'], 'Role': data['Role']}
+        except:
+            return jsonify({'message': 'Token is invalid!'}), 401
+        return f(current_user, *args, **kwargs)
+    return decorated
+
+@app.route('/api/protected')
+@token_required
+def protected_route(current_user):
+    return jsonify({'message': f'Hello {current_user["Emp_ID"]}, you have access to this route with role {current_user["Role"]}.'})
+
+# READ - Get Employee by Email and Password
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    # --- Enhanced Debugging ---
+    print(f"--- Login Request Received ---")
+    print(f"Request Headers: {request.headers}")
+    
+    if not request.is_json:
+        logging.warning("Request is not JSON. Body might be empty or have wrong Content-Type.")
+        return jsonify({"message": "Invalid request: Content-Type must be application/json"}), 400
+
+    data = request.get_json()
+    print(f"Request JSON Body: {data}")
+
+    email = data.get('email')
+    password = data.get('password')
+
+    if not email or not password:
+        logging.error("Missing 'email' or 'password' in request body.")
+        return jsonify({'message': 'Email and password are required'}), 400
+    
+    print(f"Login attempt for user: {email}")
+
+    conn = get_db_connection()
+    if conn is None:
+        logging.critical("Database connection failed.")
+        return jsonify({"error": "Database connection failed"}), 500
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM Chatbot_Emp WHERE Email_Id = ?", (email,))
+        row = cursor.fetchone()
+        
+        if not row:
+            logging.warning(f"User not found for email: {email}")
+            return jsonify({'message': 'User not found'}), 401
+
+        # Assuming the password in the database is plain text. 
+        # In a real application, you should hash passwords.
+        db_password = row.Password.strip() # Use .strip() to remove leading/trailing whitespace
+        password_match = (password == db_password)
+        
+        print(f"Password check for '{email}': Provided='{password}', DB='{db_password}', Match={password_match}")
+
+        if password_match:
+            print(f"Password match successful for {email}.")
+            token = jwt.encode({
+                'Emp_ID': row.Emp_ID,
+                'Role': row.Role,
+                'exp': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=30)
+            }, app.config['SECRET_KEY'], algorithm="HS256")
+            
+            columns = [column[0] for column in cursor.description]
+            employee = dict(zip(columns, row))
+            
+            return jsonify({'token': token, 'user': employee})
+
+        logging.warning(f"Invalid password for user: {email}")
+        return jsonify({'message': 'Invalid password'}), 401
+    except Exception as e:
+        logging.error(f"An exception occurred during login: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
 
 if __name__ == '__main__':
     app.run(debug=True)
