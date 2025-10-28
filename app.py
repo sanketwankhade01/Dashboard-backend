@@ -68,7 +68,7 @@ def home():
 
 
 #Fetch data based on where condition (Function 3)
-def fetch_Chatbot_Transaction(date_filter=None, product="None", company=None):
+def fetch_Chatbot_Transaction_State(date_filter=None, product="None", company=None):
     """Fetch tickets from Chatbot_Transaction table with optional date, product, and company filters."""
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -94,23 +94,84 @@ def fetch_Chatbot_Transaction(date_filter=None, product="None", company=None):
         except ValueError:
             raise ValueError("Invalid date_filter format. Expected 'startdate AND enddate'.")
 
-    if product:
-        query += " AND Product_Name LIKE ?"
-        params.append(f"%{product}%")
+    if  product:    
+        if product.strip().lower() != "all":      
+         query += " AND TRIM(Product_Name) LIKE TRIM(?)"                  
+         params.append(f"%{product}%")
+         print("Product Name 100:", product)  # Debug log
+    
 
     if company:
-        query += " AND Company_Name LIKE ?"
-        params.append(f"%{company}%")
+        if company.strip().lower() != "all":
+         query += " AND TRIM(Company_Name) LIKE TRIM(?)"
+         params.append(f"%{company}%")
+         print("Company Name 100:", company)  # Debug log
 
-    print("📌 Executing SQL:", query)
+
+
+    print("📌 Executing Chart SQL:", query)
     print("📌 Params:", params)
 
     cursor.execute(query, tuple(params))
     rows = cursor.fetchall()    
-    print(f"📊 Rows fetched from DB: {len(rows)}")  # Debug log
+    print(f"📊 Rows fetched from DB 300 A: {len(rows)}")  # Debug log
     cursor.close()
     connection.close()
     return rows
+
+
+#Fetch data based on where condition (Function 3)
+def fetch_Chatbot_Transaction_Chart(date_filter=None, product=None, company=None):
+    """Fetch tickets from Chatbot_Transaction table with optional date, product, and company filters."""
+    connection = get_db_connection()
+    cursor = connection.cursor()
+
+    query = """
+        SELECT Ticket_Creation_Date,Ticket_No,Ticket_Status,Company_Work_Feedback,
+               Ticket_Priority,Ticket_Category,Ticket_Day_Open,
+               Product_Name, Company_Name
+        FROM Chatbot_Transaction
+        WHERE 1=1
+    """
+    params = []
+
+    # Add optional filters
+    if date_filter:
+
+        #  query += " AND CAST(Ticket_Creation_Date AS DATE) = CAST(? AS DATE)"
+        #  params.append(date_filter)
+        try:
+            startdate, enddate = date_filter.split(" AND ")
+            query += " AND CAST(Ticket_Creation_Date AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)"
+            params.extend([startdate.strip(), enddate.strip()])
+        except ValueError:
+            raise ValueError("Invalid date_filter format. Expected 'startdate AND enddate'.")
+
+    if  product:    
+        if product.strip().lower() != "all":      
+         query += " AND TRIM(Product_Name) LIKE TRIM(?)"                  
+         params.append(f"%{product}%")
+         print("Product Name 100:", product)  # Debug log
+    
+
+    if company:
+        if company.strip().lower() != "all":
+         query += " AND TRIM(Company_Name) LIKE TRIM(?)"
+         params.append(f"%{company}%")
+         print("Company Name 100:", company)  # Debug log
+
+
+
+    print("📌 Executing Chart SQL:", query)
+    print("📌 Params:", params)
+
+    cursor.execute(query, tuple(params))
+    rows = cursor.fetchall()    
+    print(f"📊 Rows fetched from DB 300 A: {len(rows)}")  # Debug log
+    cursor.close()
+    connection.close()
+    return rows
+
          
 
 # All Get Function (Section 4)
@@ -150,18 +211,22 @@ def get_stats():
     date = request.args.get('date')
     product = request.args.get('product')
     company = request.args.get('company')
-    print(f"📌 /api/stats requested for date={date}, product={product}, company={company}")  # Debug log
+    print(f"📌 /api 100/stats requested for date={date}, product={product}, company={company}")  # Debug log
 
-    rows = fetch_Chatbot_Transaction(date, product, company)
+    rows = fetch_Chatbot_Transaction_State(date, product, company)
+
+    print(f"📊 Rows for stats 500 B: {len(rows)}")  # Debug log
 
     if not rows:
         print("⚠️ No rows found for stats")
         return jsonify([])
-
+    
+    print(f"📊 Sample row for stats: {rows}")  # Debug log
     total_tickets = len(rows)
 
     # FIX: Ticket_Status is column index 2
     status_counts = Counter([r[2] for r in rows])
+    print(f"📊 Status counts 600: {status_counts}")  # Debug log
 
     # FIX: Ticket_Day_Open is column index 6
     avg_days_open = int(
@@ -197,7 +262,9 @@ def get_charts():
     company = request.args.get('company')
     print(f"📌 /api/charts requested for date={date}, product={product}, company={company}")  # Debug log
 
-    rows = fetch_Chatbot_Transaction(date, product, company)
+    rows = fetch_Chatbot_Transaction_Chart(date, product, company)
+
+    print(f"📊 Rows for stats 600 B: {len(rows)}")  # Debug log
 
     if not rows:
         print("⚠️ No rows found for charts")
