@@ -417,6 +417,261 @@ def create_employee():
 
 
 
+# READ - Get tickets filtered by Company_ID and Company_Email
+@app.route('/api/tickets', methods=['GET'])
+def get_tickets_by_company():
+    """Return tickets with selected fields filtered by Company_ID and Company_Email.
+
+    Query parameters (required):
+      - company_id (or Company_ID)
+      - company_email (or Company_Email)
+    """
+    # Accept either lowercase or uppercase query parameter names for convenience
+    company_id = request.args.get('company_id') or request.args.get('Company_ID')
+    company_email = request.args.get('company_email') or request.args.get('Company_Email')
+
+    if not company_id or not company_email:
+        return jsonify({"error": "Missing required query parameters: company_id and company_email"}), 400
+
+    conn = get_db_connection()
+    if conn is None:
+        return jsonify({"error": "Database connection failed"}), 500
+
+    try:
+        cursor = conn.cursor()
+        query = (
+            "SELECT Uniqueid, Ticket_No, Ticket_Category, Ticket_Details,"
+            " Ticket_Creation_Date, Ticket_Closing_Date, Ticket_Priority,"
+            " Ticket_Status, Ticket_Day_Open"
+            " FROM Chatbot_Transaction"
+            " WHERE Company_ID = ? AND Company_Email = ?"
+            " ORDER BY Ticket_Creation_Date DESC"
+        )
+        print(f"📌 /api/tickets SQL: {query} | params: ({company_id}, {company_email})")
+        cursor.execute(query, (company_id, company_email))
+        rows = cursor.fetchall()
+
+        # Build result using cursor.description for column names
+        columns = [col[0] for col in cursor.description] if cursor.description else []
+        results = []
+        for row in rows:
+            item = {}
+            for idx, col in enumerate(columns):
+                val = row[idx]
+                # convert dates to ISO format strings for JSON serializable
+                if isinstance(val, (datetime.date, datetime.datetime)):
+                    try:
+                        val = val.isoformat()
+                    except Exception:
+                        val = str(val)
+                item[col] = val
+            results.append(item)
+
+        return jsonify(results), 200
+    except Exception as e:
+        logging.error(f"Error fetching tickets: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+
+
+@app.route('/api/get-comments', methods=['GET'])
+def get_comments():
+    """Return Comments (CSV string) for a ticket identified by Ticket_No.
+
+    Query parameter expected:
+      - ticket_no or Ticket_No or uniqueid (required)
+
+    Returns JSON: { "Ticket_No": <ticket_no>, "Comments": "comma,separated,values" }
+    """
+    ticket_no = request.args.get('ticket_no') or request.args.get('Ticket_No') or request.args.get('uniqueid') or request.args.get('UniqueId')
+    if not ticket_no:
+        return jsonify({"error": "Missing required query parameter: ticket_no (or Ticket_No/uniqueid)"}), 400
+
+    conn = get_db_connection()
+    if conn is None:
+        return jsonify({"error": "Database connection failed"}), 500
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT Comment FROM Chatbot_Transaction WHERE Ticket_No = ?", (ticket_no,))
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({"message": "No record found for given Ticket_No"}), 404
+
+        comments = row[0] or ""
+
+        # Normalize whitespace around commas
+        parts = [p.strip() for p in comments.split(',') if p and p.strip()]
+        csv = ",".join(parts)
+
+        return jsonify({"Ticket_No": ticket_no, "Comments": csv}), 200
+    except Exception as e:
+        logging.error(f"Error fetching comments for Ticket_No {ticket_no}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+# UPDATE - Add comment(s) to Comment column for a ticket
+@app.route('/api/comments', methods=['PUT'])
+def add_comments():
+    """Append comment(s) to the Comment column for a ticket matching company and ticket id.
+
+    Expected JSON body (either-case keys accepted):
+      - company_id or Company_ID (required)
+      - company_email or Company_Email (required)
+      - uniqueid or UniqueId or ticket_no or Ticket_No (required)
+      - comment (string) or comments (list of strings) (required)
+
+        Behavior:
+            - Fetches existing `Comment` value (CSV string); if found, appends new comment(s) (sanitized).
+            - If no existing comment is found, adds the single comment provided in the input parameter.
+            - Updates the row and returns the updated CSV string.
+    """
+    data = request.get_json() or {}
+
+    company_id = data.get('company_id') or data.get('Company_ID')
+    company_email = data.get('company_email') or data.get('Company_Email')
+    ticket_no = data.get('ticket_no') or data.get('Ticket_No') 
+    uniqueid = data.get('uniqueid') or data.get('Uniqueid')
+
+    # Accept either single comment string or list of comments
+    raw_comment = data.get('comment')
+    raw_comments = data.get('comments')
+
+    if not company_id or not company_email or not ticket_no or not uniqueid:
+        return jsonify({"error": "Missing required fields: company_id, company_email and ticket_no/uniqueid"}), 400
+
+    # Build list of new comments
+    new_comments = []
+    if raw_comments is not None:
+        if not isinstance(raw_comments, (list, tuple)):
+            return jsonify({"error": "Field 'comments' must be a list of strings"}), 400
+        new_comments = [str(c).strip() for c in raw_comments if c and str(c).strip()]
+    elif raw_comment is not None:
+        if not isinstance(raw_comment, (str,)):
+            # allow numbers etc by converting to str
+            raw_comment = str(raw_comment)
+        raw_comment = raw_comment.strip()
+        if raw_comment:
+            new_comments = [raw_comment]
+
+    if not new_comments:
+        return jsonify({"error": "No comment(s) provided"}), 400
+
+    # Sanitize comments: replace any commas to avoid breaking CSV storage
+    sanitized = [c.replace(',', ';').strip() for c in new_comments]
+
+    conn = get_db_connection()
+    if conn is None:
+        return jsonify({"error": "Database connection failed"}), 500
+
+    try:
+        cursor = conn.cursor()
+
+        # Normalize inputs (convert to str and strip whitespace)
+        company_id = str(company_id).strip()
+        company_email = str(company_email).strip()
+        ticket_no = str(ticket_no).strip()
+
+        # Parse uniqueid: Uniqueid column is integer in DB; accept int or numeric string from client
+        uniqueid_raw = uniqueid
+        uniqueid_int = None
+        try:
+            uniqueid_int = int(uniqueid_raw)
+            uniqueid_param = uniqueid_int
+        except Exception:
+            # fallback to string form if not an int
+            uniqueid_param = str(uniqueid_raw).strip()
+
+        # Attempt 1: exact match using Uniqueid as-is (int if parsed, else string)
+        sql_exact = (
+            "SELECT Comment FROM Chatbot_Transaction "
+            "WHERE Company_ID = ? AND Company_Email = ? AND Ticket_No = ? AND Uniqueid = ?"
+        )
+        print(f"Executing SQL (exact): {sql_exact} | params: ({company_id},{company_email},{ticket_no},{uniqueid_param})")
+        cursor.execute(sql_exact, (company_id, company_email, ticket_no, uniqueid_param))
+        row = cursor.fetchone()
+
+        # Attempt 2: trimmed-columns equality (handles stored values with stray spaces)
+        if not row:
+            # Use CAST/CONVERT to compare Uniqueid when it's stored as an integer
+            sql_trim = (
+                "SELECT Comment FROM Chatbot_Transaction "
+                "WHERE TRIM(Company_ID) = TRIM(?) AND TRIM(Company_Email) = TRIM(?) "
+                "AND TRIM(Ticket_No) = TRIM(?) AND TRIM(CONVERT(VARCHAR(50), Uniqueid)) = TRIM(?)"
+            )
+            print(f"Attempting SQL (trim): {sql_trim} | params: ({company_id},{company_email},{ticket_no},{uniqueid_param})")
+            cursor.execute(sql_trim, (company_id, company_email, ticket_no, str(uniqueid_param)))
+            row = cursor.fetchone()
+
+        # Attempt 3: fallback to Ticket_No only (in case Company_ID/Email don't exactly match)
+        fallback_used = False
+        if not row:
+            # Fallback: match by Ticket_No and Uniqueid (convert Uniqueid to varchar for trim comparison)
+            sql_ticket_only = (
+                "SELECT Comment, Company_ID, Company_Email FROM Chatbot_Transaction "
+                "WHERE TRIM(Ticket_No) = TRIM(?) AND TRIM(CONVERT(VARCHAR(50), Uniqueid)) = TRIM(?)"
+            )
+            print(f"Attempting SQL (ticket only): {sql_ticket_only} | params: ({ticket_no},{uniqueid_param})")
+            cursor.execute(sql_ticket_only, (ticket_no, str(uniqueid_param)))
+            row = cursor.fetchone()
+            if row:
+                fallback_used = True
+
+        if not row:
+            return jsonify({
+                "error": "No matching record found for given identifiers",
+                "tried": {
+                    "company_id": company_id,
+                    "company_email": company_email,
+                    "ticket_no": ticket_no,
+                    "uniqueid": uniqueid_raw
+                }
+            }), 404
+
+        # If ticket-only query returned extra columns, handle accordingly
+        if fallback_used:
+            # row contains (Comment, Company_ID, Company_Email)
+            existing = row[0] or ""
+            logging.warning(f"Fallback match by Ticket_No used. DB Company_ID={row[1]}, Company_Email={row[2]}")
+        else:
+            existing = row[0] or ""
+        parts = [p.strip() for p in existing.split(',') if p and p.strip()]
+
+        # Behavior change: if existing comments found, append all sanitized comments;
+        # if no existing comment, add only a single comment (the first one provided).
+        if parts:
+            # existing comments present -> append all sanitized comments
+            parts.extend(sanitized)
+        else:
+            # no existing comments -> add only the first sanitized comment
+            parts = [sanitized[0]] if sanitized else []
+
+        updated_csv = ",".join(parts)
+
+        sql_update = (
+            "UPDATE Chatbot_Transaction SET Comment = ? "
+            "WHERE Company_ID = ? AND Company_Email = ? AND Ticket_No = ? AND Uniqueid = ?"
+        )
+        params_update = (updated_csv, company_id, company_email, ticket_no, uniqueid_param)
+        print(f"📌 Executing UPDATE SQL: {sql_update} | params: {params_update}")
+        cursor.execute(sql_update, params_update)
+        conn.commit()
+
+        return jsonify({
+            "Ticket_No": ticket_no,
+            "Comments": updated_csv,
+            "added": sanitized
+        }), 200
+    except Exception as e:
+        logging.error(f"Error updating comments for Ticket_No {ticket_no}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
 
 
 
