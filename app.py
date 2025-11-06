@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from collections import Counter
+import decimal
 import os
 import logging
 import pyodbc
@@ -459,6 +460,16 @@ def get_tickets_by_company():
             for idx, col in enumerate(columns):
                 val = row[idx]
                 # convert dates to ISO format strings for JSON serializable
+                # convert Decimal to int/float for JSON serializable
+                if isinstance(val, decimal.Decimal):
+                    try:
+                        # if value is whole number, convert to int, else float
+                        if val == val.to_integral_value():
+                            val = int(val)
+                        else:
+                            val = float(val)
+                    except Exception:
+                        val = float(val)
                 if isinstance(val, (datetime.date, datetime.datetime)):
                     try:
                         val = val.isoformat()
