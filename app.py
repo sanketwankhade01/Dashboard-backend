@@ -8,6 +8,7 @@ import pyodbc
 import datetime
 import jwt
 from functools import wraps
+from decimal import Decimal
 
 # If a .env file is present, load it so environment variables work locally.
 try:
@@ -69,8 +70,8 @@ def home():
 
 
 #Fetch data based on where condition (Function 3)
-def fetch_Chatbot_Transaction_State(date_filter=None, product="None", company=None):
-    """Fetch tickets from Chatbot_Transaction table with optional date, product, and company filters."""
+def fetch_Chatbot_Transaction_State(date_filter=None, product="None", company=None, company_id=None, company_email=None):
+    """Fetch tickets from Chatbot_Transaction table with optional date, product, company name, and company id/email filters."""
     connection = get_db_connection()
     cursor = connection.cursor()
 
@@ -102,11 +103,22 @@ def fetch_Chatbot_Transaction_State(date_filter=None, product="None", company=No
          print("Product Name 100:", product)  # Debug log
     
 
+    # Filter by company name (optional)
     if company:
         if company.strip().lower() != "all":
          query += " AND TRIM(Company_Name) LIKE TRIM(?)"
          params.append(f"%{company}%")
          print("Company Name 100:", company)  # Debug log
+
+    # Filter by Company_ID and Company_Email when provided (required at endpoints)
+    if company_id:
+        query += " AND TRIM(Company_ID) = TRIM(?)"
+        params.append(company_id)
+        print("Company_ID filter applied:", company_id)
+    if company_email:
+        query += " AND TRIM(Company_Email) = TRIM(?)"
+        params.append(company_email)
+        print("Company_Email filter applied:", company_email)
 
 
 
@@ -122,8 +134,8 @@ def fetch_Chatbot_Transaction_State(date_filter=None, product="None", company=No
 
 
 #Fetch data based on where condition (Function 3)
-def fetch_Chatbot_Transaction_Chart(date_filter=None, product=None, company=None):
-    """Fetch tickets from Chatbot_Transaction table with optional date, product, and company filters."""
+def fetch_Chatbot_Transaction_Chart(date_filter=None, product=None, company=None, company_id=None, company_email=None):
+    """Fetch tickets from Chatbot_Transaction table with optional date, product, company name, and company id/email filters."""
     connection = get_db_connection()
     cursor = connection.cursor()
 
@@ -155,11 +167,22 @@ def fetch_Chatbot_Transaction_Chart(date_filter=None, product=None, company=None
          print("Product Name 100:", product)  # Debug log
     
 
+    # Filter by company name (optional)
     if company:
         if company.strip().lower() != "all":
          query += " AND TRIM(Company_Name) LIKE TRIM(?)"
          params.append(f"%{company}%")
          print("Company Name 100:", company)  # Debug log
+
+    # Filter by Company_ID and Company_Email when provided (required at endpoints)
+    if company_id:
+        query += " AND TRIM(Company_ID) = TRIM(?)"
+        params.append(company_id)
+        print("Company_ID filter applied:", company_id)
+    if company_email:
+        query += " AND TRIM(Company_Email) = TRIM(?)"
+        params.append(company_email)
+        print("Company_Email filter applied:", company_email)
 
 
 
@@ -210,11 +233,16 @@ def get_companies():
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
     date = request.args.get('date')
-    product = request.args.get('product')
-    company = request.args.get('company')
-    print(f"📌 /api 100/stats requested for date={date}, product={product}, company={company}")  # Debug log
+    product = request.args.get('Product_Name')
+    company = request.args.get('Company_Name')
+    
+    # Optional Company_ID and Company_Email for data scoping
+    company_id = request.args.get('Company_ID') or request.args.get('company_id')
+    company_email = request.args.get('Company_Email') or request.args.get('company_email')
+    print(f"📌 /api/stats requested for date={date}, product={product}, company={company}, Company_ID={company_id}, Company_Email={company_email}")
 
-    rows = fetch_Chatbot_Transaction_State(date, product, company)
+    # Pass company filters into fetch function if provided; otherwise fetch across all companies
+    rows = fetch_Chatbot_Transaction_State(date, product, company, company_id=company_id, company_email=company_email)
 
     print(f"📊 Rows for stats 500 B: {len(rows)}")  # Debug log
 
@@ -230,10 +258,7 @@ def get_stats():
     print(f"📊 Status counts 600: {status_counts}")  # Debug log
 
     # FIX: Ticket_Day_Open is column index 6
-    avg_days_open = int(
-        sum(r[6] for r in rows if r[2] == 'Open') /
-        max(status_counts.get('Open', 1), 1)
-    )
+    avg_days_open = int( sum( r[6] if r[6] is not None else decimal.Decimal(0) for r in rows if r[2] == 'Open') / max(status_counts.get('Open', 1), 1))
 
     stats = [
         {"label": "Tickets", "value": total_tickets, "color": "#6f42c1",
@@ -259,11 +284,15 @@ def get_stats():
 @app.route('/api/charts', methods=['GET'])
 def get_charts():
     date = request.args.get('date')
-    product = request.args.get('product')
-    company = request.args.get('company')
-    print(f"📌 /api/charts requested for date={date}, product={product}, company={company}")  # Debug log
+    product = request.args.get('Product_Name')
+    company = request.args.get('Company_Name')
+    # Optional Company_ID and Company_Email for data scoping
+    company_id = request.args.get('Company_ID') or request.args.get('company_id')
+    company_email = request.args.get('Company_Email') or request.args.get('company_email')
+    print(f"📌 /api/charts requested for date={date}, product={product}, company={company}, Company_ID={company_id}, Company_Email={company_email}")
 
-    rows = fetch_Chatbot_Transaction_Chart(date, product, company)
+    # Pass company filters into fetch function if provided; otherwise fetch across all companies
+    rows = fetch_Chatbot_Transaction_Chart(date, product, company, company_id=company_id, company_email=company_email)
 
     print(f"📊 Rows for stats 600 B: {len(rows)}")  # Debug log
 
@@ -284,6 +313,7 @@ def get_charts():
 
     for r in rows:
         days = r[6]  # Ticket_Day_Open
+        days = days if days is not None else 0
         if days <= 5:
             open_days_ranges['0-5 Days'] += 1
         elif days <= 10:
@@ -358,10 +388,33 @@ def get_charts():
 
 @app.route('/api/monthly-trends', methods=['GET'])
 def get_monthly_trends():
+    # Optional company scope for monthly trends
+    company_id = request.args.get('Company_ID') or request.args.get('company_id')
+    company_email = request.args.get('Company_Email') or request.args.get('company_email')
+
     conn = get_db_connection()
     cursor = conn.cursor()
-  
-    cursor.execute("SELECT Ticket_Creation_Date, Ticket_Status FROM Chatbot_Transaction")
+
+    # Build query with optional filters
+    query = "SELECT Ticket_Creation_Date, Ticket_Status FROM Chatbot_Transaction"
+    params = []
+    if company_id:
+        query += " WHERE TRIM(Company_ID) = TRIM(?)"
+        params.append(company_id)
+        if company_email:
+            query += " AND TRIM(Company_Email) = TRIM(?)"
+            params.append(company_email)
+    elif company_email:
+        # company_id not provided but email is — filter by email only
+        query += " WHERE TRIM(Company_Email) = TRIM(?)"
+        params.append(company_email)
+
+    print(f"📌 /api/monthly-trends SQL: {query} | params: {params}")
+    if params:
+        cursor.execute(query, tuple(params))
+    else:
+        cursor.execute(query)
+
     rows = cursor.fetchall()
     conn.close()
 
