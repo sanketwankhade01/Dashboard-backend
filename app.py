@@ -70,7 +70,7 @@ def home():
 
 
 #Fetch data based on where condition (Function 3)
-def fetch_Chatbot_Transaction_State(date_filter=None, product="None", company=None, company_id=None, company_email=None):
+def fetch_Chatbot_Transaction_State(date_filter=None, product=None, company=None, company_id=None, company_email=None):
     """Fetch tickets from Chatbot_Transaction table with optional date, product, company name, and company id/email filters."""
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -96,19 +96,21 @@ def fetch_Chatbot_Transaction_State(date_filter=None, product="None", company=No
         except ValueError:
             raise ValueError("Invalid date_filter format. Expected 'startdate AND enddate'.")
 
-    if  product:    
+    if  product: 
+        print("Product Filter Applied value State:", product.strip().lower() != "all")   
         if product.strip().lower() != "all":      
-         query += " AND TRIM(Product_Name) LIKE TRIM(?)"                  
-         params.append(f"%{product}%")
-         print("Product Name 100:", product)  # Debug log
+            query += " AND TRIM(Product_Name) LIKE TRIM(?)"                  
+            params.append(f"%{product}%")
+            print("Product Name 100:", product)  # Debug log
     
 
     # Filter by company name (optional)
     if company:
+        print("Company Filter Applied value:", company.strip().lower() != "all")
         if company.strip().lower() != "all":
-         query += " AND TRIM(Company_Name) LIKE TRIM(?)"
-         params.append(f"%{company}%")
-         print("Company Name 100:", company)  # Debug log
+            query += " AND TRIM(Company_Name) LIKE TRIM(?)"
+            params.append(f"%{company}%")
+            print("Company Name 100:", company)  # Debug log
 
     # Filter by Company_ID and Company_Email when provided (required at endpoints)
     if company_id:
@@ -122,12 +124,12 @@ def fetch_Chatbot_Transaction_State(date_filter=None, product="None", company=No
 
 
 
-    print("📌 Executing Chart SQL:", query)
+    print("📌 Executing for State SQL:", query)
     print("📌 Params:", params)
 
     cursor.execute(query, tuple(params))
     rows = cursor.fetchall()    
-    print(f"📊 Rows fetched from DB 300 A: {len(rows)}")  # Debug log
+    print(f"📊 Rows fetched from DB for State 300 A: {len(rows)}")  # Debug log
     cursor.close()
     connection.close()
     return rows
@@ -160,11 +162,13 @@ def fetch_Chatbot_Transaction_Chart(date_filter=None, product=None, company=None
         except ValueError:
             raise ValueError("Invalid date_filter format. Expected 'startdate AND enddate'.")
 
-    if  product:    
+    print("Product Filter Applied chart:", product)
+    if  product:
+        print("Product Filter Applied value chart:", product.strip().lower() != "all")    
         if product.strip().lower() != "all":      
          query += " AND TRIM(Product_Name) LIKE TRIM(?)"                  
          params.append(f"%{product}%")
-         print("Product Name 100:", product)  # Debug log
+         print("Product Name chart 100:", product)  # Debug log
     
 
     # Filter by company name (optional)
@@ -242,7 +246,7 @@ def get_stats():
     print(f"📌 /api/stats requested for date={date}, product={product}, company={company}, Company_ID={company_id}, Company_Email={company_email}")
 
     # Pass company filters into fetch function if provided; otherwise fetch across all companies
-    rows = fetch_Chatbot_Transaction_State(date, product, company, company_id=company_id, company_email=company_email)
+    rows = fetch_Chatbot_Transaction_State(date, product.strip(), company.strip(), company_id=company_id, company_email=company_email)
 
     print(f"📊 Rows for stats 500 B: {len(rows)}")  # Debug log
 
@@ -284,15 +288,15 @@ def get_stats():
 @app.route('/api/charts', methods=['GET'])
 def get_charts():
     date = request.args.get('date')
-    product = request.args.get('Product_Name')
-    company = request.args.get('Company_Name')
+    product = request.args.get('product')
+    company = request.args.get('company')
     # Optional Company_ID and Company_Email for data scoping
     company_id = request.args.get('Company_ID') or request.args.get('company_id')
     company_email = request.args.get('Company_Email') or request.args.get('company_email')
     print(f"📌 /api/charts requested for date={date}, product={product}, company={company}, Company_ID={company_id}, Company_Email={company_email}")
 
     # Pass company filters into fetch function if provided; otherwise fetch across all companies
-    rows = fetch_Chatbot_Transaction_Chart(date, product, company, company_id=company_id, company_email=company_email)
+    rows = fetch_Chatbot_Transaction_Chart(date, product.strip(), company.strip(), company_id=company_id, company_email=company_email)
 
     print(f"📊 Rows for stats 600 B: {len(rows)}")  # Debug log
 
