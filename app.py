@@ -164,10 +164,11 @@ def fetch_Chatbot_Transaction_Chart(date_filter=None, product=None, company=None
 
     print("Product Filter Applied chart:", product)
     if  product:
+        print("I am here")
         print("Product Filter Applied value chart:", product.strip().lower() != "all")    
         if product.strip().lower() != "all":      
          query += " AND TRIM(Product_Name) LIKE TRIM(?)"                  
-         params.append(f"%{product}%")
+         params.append(f"{product.strip()}")
          print("Product Name chart 100:", product)  # Debug log
     
 
@@ -175,7 +176,7 @@ def fetch_Chatbot_Transaction_Chart(date_filter=None, product=None, company=None
     if company:
         if company.strip().lower() != "all":
          query += " AND TRIM(Company_Name) LIKE TRIM(?)"
-         params.append(f"%{company}%")
+         params.append(f"{company.strip()}")
          print("Company Name 100:", company)  # Debug log
 
     # Filter by Company_ID and Company_Email when provided (required at endpoints)
@@ -296,7 +297,7 @@ def get_charts():
     print(f"📌 /api/charts requested for date={date}, product={product}, company={company}, Company_ID={company_id}, Company_Email={company_email}")
 
     # Pass company filters into fetch function if provided; otherwise fetch across all companies
-    rows = fetch_Chatbot_Transaction_Chart(date, product.strip(), company.strip(), company_id=company_id, company_email=company_email)
+    rows = fetch_Chatbot_Transaction_Chart(date, product, company, company_id=company_id, company_email=company_email)
 
     print(f"📊 Rows for stats 600 B: {len(rows)}")  # Debug log
 
@@ -304,20 +305,31 @@ def get_charts():
         print("⚠️ No rows found for charts")
         return jsonify([])
 
-    # FIX: Corrected indexes
+     # -----------------------------
+    # COUNTS FROM DATABASE ROWS
+    # -----------------------------
     status_counts = Counter([r[2] for r in rows])
     feedback_counts = Counter([r[3] for r in rows])
-    severity_counts = Counter([r[4] for r in rows])
+    severity_counts = Counter([str(r[4]).strip() for r in rows])
     category_counts = Counter([r[5] for r in rows])
 
+    # -----------------------------
+    # FIXED TICKET STATUS ORDER
+    # -----------------------------
+    fixed_status_order = ["Open", "Pending", "Resolved", "Closed"]
+    status_labels = fixed_status_order
+    status_values = [status_counts.get(s, 0) for s in fixed_status_order]
+
+    # -----------------------------
+    # OPEN DAYS RANGE
+    # -----------------------------
     open_days_ranges = {
         '0-5 Days': 0, '6-10 Days': 0, '11-15 Days': 0,
         '16-20 Days': 0, '21-25 Days': 0, '> 25 Days': 0
     }
 
     for r in rows:
-        days = r[6]  # Ticket_Day_Open
-        days = days if days is not None else 0
+        days = r[6] if r[6] is not None else 0
         if days <= 5:
             open_days_ranges['0-5 Days'] += 1
         elif days <= 10:
@@ -331,57 +343,76 @@ def get_charts():
         else:
             open_days_ranges['> 25 Days'] += 1
 
+    # -----------------------------
+    # FIXED SEVERITY ORDER
+    # -----------------------------
+    fixed_severity_order = ["High", "Medium", "Low"]
+    severity_labels = fixed_severity_order
+    severity_values = [severity_counts.get(s, 0) for s in fixed_severity_order]
+
+    # -----------------------------
+    # BUILD CHART RESPONSE
+    # -----------------------------
     charts = [
+        # TICKET STATUS CHART
         {
             "title": "Ticket Status",
             "type": "doughnut",
             "data": {
-                "labels": list(status_counts.keys()),
-                "datasets": [ {
-                    "data": list(status_counts.values()),
-                    "backgroundColor": ["orange", "skyblue", "red", "green", "purple"]
+                "labels": status_labels,
+                "datasets": [{
+                    "data": status_values,
+                    "backgroundColor": ["#dc3545", "#CA279B", "#17a2b8", "#28a745"]
                 }]
             }
         },
+
+        # SATISFACTION CHART
         {
             "title": "Satisfaction",
             "type": "bar",
             "data": {
                 "labels": list(feedback_counts.keys()),
-                "datasets": [ {
+                "datasets": [{
                     "data": list(feedback_counts.values()),
                     "backgroundColor": ["green", "blue", "gray", "red"]
                 }]
             }
         },
+
+        # SEVERITY CHART
         {
             "title": "Severity",
             "type": "bar",
             "data": {
-                "labels": list(severity_counts.keys()),
-                "datasets": [ {
-                    "data": list(severity_counts.values()),
-                    "backgroundColor": ["red", "orange", "yellow", "gray"]
+                "labels": severity_labels,
+                "datasets": [{
+                    "data": severity_values,
+                    "backgroundColor": ["red", "orange", "yellow"]
                 }]
             }
         },
+
+        # ISSUE CATEGORY CHART
         {
             "title": "Issue Category",
             "type": "bar",
             "data": {
                 "labels": list(category_counts.keys()),
-                "datasets": [ {
+                "datasets": [{
                     "data": list(category_counts.values()),
                     "backgroundColor": ["purple", "blue", "green", "gray"]
                 }]
             }
         },
+
+        # OPEN DAYS CHART
         {
             "title": "Open Days",
             "type": "bar",
             "data": {
                 "labels": list(open_days_ranges.keys()),
-                "datasets": [ {
+                "datasets": [{
                     "data": list(open_days_ranges.values()),
                     "backgroundColor": ["teal"]
                 }]
